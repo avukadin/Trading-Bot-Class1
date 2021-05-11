@@ -7,8 +7,7 @@ from TradingBot import TradingBot
 
 if __name__ == "__main__":    
     
-    bt = Backtester(["IWD", "IWF"])
-    bt.swap_positions = True
+    bt = Backtester(["IWD", "IWF"], swap_positions=True)
     trade_date = bt.run_backtest("2010-05-10", "2013-10-18")
 
 # Note change to 180 days

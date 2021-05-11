@@ -10,10 +10,10 @@ class Backtester(TradingBot):
     benchmark = None
     base_folder = "/home/alex/Projects/Trading-Bot-Class1" # Change this to your path
     
-    def __init__(self, tickers, benchmark="SPY"):
+    def __init__(self, tickers, benchmark="SPY", **kwargs):
         self.benchmark = benchmark
         tickers.append(self.benchmark)
-        super().__init__(tickers)
+        super().__init__(tickers, **kwargs)
         
         # Make sure we don't trade the benchmark
         self.trade_data.loc[:,("Signal", self.benchmark)] = -1e6  
@@ -112,7 +112,7 @@ class Backtester(TradingBot):
             summary = self._make_summary_report(d, summary)
         # Save
         f_name = f"summary_{str(datetime.datetime.today())}.csv"
-        pd.DataFrame(data=summary).to_csv(os.path.join(self.base_folder, 'output' f_name))
+        pd.DataFrame(data=summary).to_csv(os.path.join(self.base_folder, 'output', f_name))
     
     def _make_summary_report(self, trade_data, summary):                
         

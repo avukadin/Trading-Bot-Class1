@@ -22,7 +22,9 @@ class TradingBot():
         self.tickers = tickers
         self.signal_length = signal_length
         self.swap_positions = swap_positions
+        print(self.swap_positions)
         
+        a = b
         self.raw_data = self._query_data(self.tickers)
         self.trade_data = self._prepare_trade_data()
         
