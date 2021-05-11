@@ -1,7 +1,8 @@
 import yfinance as yf 
-import pickle
 import numpy as np
 import datetime
+import pandas as pd
+import statsmodels.formula.api as smf
 
 debugTF = True
 
@@ -9,8 +10,7 @@ class TradingBot():
     
     raw_data = None
     trade_data = None
-    
-    debug_data = "C:/Users/Alex/Projects/SkillShare/data"
+
     tickers = None
     signal_length = None
     swap_positions = False
@@ -25,13 +25,7 @@ class TradingBot():
         self.signal_length = signal_length
         self.swap_positions = swap_positions
         
-        # Load all the data
-        if debugTF:
-            self.load_pickle()
-        else:
-            self.raw_data = self._query_data(self.tickers)
-            self.save_pickle()
-            
+        self.raw_data = self._query_data(self.tickers)
         self.trade_data = self._prepare_trade_data()
         
     def check_for_trades(self, current_position):
@@ -41,40 +35,7 @@ class TradingBot():
         print(f'Most Recent Data Availbale: {last_date}')
         print(f'Current Position: {current_position}')
         print(f'Next Position: {next_position}')        
-  
-    def _query_data(self, tickers):
-        start_date, end_date = self._get_query_range()
-        tickers = ' '.join(tickers)
-        hist = yf.download(tickers, start=start_date, end=end_date)
-        hist = hist.sort_values('Date', ascending=True)
-        return hist
-    
-    def _get_query_range(self):
-        today = datetime.date.today()
-        start_date = today - datetime.timedelta(self.signal_length*2)
-        end_date = str(today)
-        return start_date, end_date
-    
-    def _calc_signals(self, data):
-        for ticker in self.tickers:
-            data.loc[:,("Signal", ticker)] = data["Close", ticker].rolling(window=self.signal_length).apply(self._get_slope, raw=False).shift(1)
-            data.loc[:,("Signal", ticker)] = data["Signal", ticker]/data["Close", ticker]
-        return data
-    
-    def _add_prev_close(self, data):
-        for ticker in self.tickers:            
-            data.loc[:,("Prev_Close", ticker)] = data["Close", ticker].shift(1)
-        return data
-            
-    def _prepare_trade_data(self):
-        # Gather data for backtes
-        trade_data = self.raw_data[["Close", "Open"]]
-        trade_data = self._calc_signals(trade_data)
-        trade_data = self._add_prev_close(trade_data)
-        trade_data = self._remove_nans(trade_data)
-        
-        return trade_data
-    
+
     def _make_trade_decision(self, day_data, prev_position):
         
         next_position = prev_position
@@ -106,30 +67,61 @@ class TradingBot():
                 status = self.EXIT_POSITION
         
         return next_position, status
+  
+    def _query_data(self, tickers):
+        start_date, end_date = self._get_query_range()
+        tickers = ' '.join(tickers)
+        hist = yf.download(tickers, start=start_date, end=end_date)
+        hist = hist.sort_values('Date', ascending=True)
+        return hist
     
-    @staticmethod
-    def _filter_dates(data, start_date, end_date):
-        data = data.loc[start_date:end_date]
+    def _get_query_range(self):
+        today = datetime.date.today()
+        start_date = today - datetime.timedelta(self.signal_length*2)
+        end_date = str(today)
+        return start_date, end_date
+
+    # ============
+
+    def _prepare_trade_data(self):
+        # Gather data for backtes
+        trade_data = self.raw_data[["Close", "Open"]]
+        trade_data = self._calc_signals(trade_data)
+        trade_data = self._add_prev_close(trade_data)
+        trade_data = self._remove_nans(trade_data)
+        
+        return trade_data
+    
+    def _calc_signals(self, data):
+        for ticker in self.tickers:
+            data.loc[:,("Signal", ticker)] = data["Close", ticker].rolling(window=self.signal_length).apply(self._get_slope, raw=False).shift(1)
+            data.loc[:,("Signal", ticker)] = data["Signal", ticker]/data["Close", ticker]
         return data
-    
-    @staticmethod
-    def _remove_nans(data):
-        nan_filter = ~np.any(data["Signal"].isnull(), 1)
-        return data[nan_filter]
-    
+
     @staticmethod
     def _get_slope(array):
         y = np.array(array)
         x = np.arange(len(y))
+        df = pd.DataFrame({'x':x, 'y':y})
+        mod = smf.quantreg('y ~ x', df)
+        res = mod.fit(q=.5)
+        return (res.params['x'])
+    
+    def _add_prev_close(self, data):
+        for ticker in self.tickers:            
+            data.loc[:,("Prev_Close", ticker)] = data["Close", ticker].shift(1)
+        return data
+
+    @staticmethod
+    def _remove_nans(data):
+        nan_filter = ~np.any(data["Signal"].isnull(), 1)
+        return data[nan_filter]
+    # ====================
+    
+    @staticmethod
+    def _get_slope_MSE(array):
+        y = (np.array(array)-np.mean(array))/np.std(array)
+        x = np.arange(len(y))
+        x = (np.array(x)-np.mean(x))/np.std(x)
         slope, _ = np.polyfit(x,y, deg=1)
-        return slope
-
-    # ============== DEBUG ======================= 
-    def save_pickle(self):
-        with open(self.debug_data, 'wb' ) as outfile:
-            pickle.dump(self.raw_data, outfile)
-
-    def load_pickle(self):
-        with open(self.debug_data, 'rb' ) as file:    
-            data = pickle.load(file)
-            self.raw_data = data
+        return slops

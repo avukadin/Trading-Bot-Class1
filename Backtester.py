@@ -8,8 +8,7 @@ import os
 class Backtester(TradingBot):
     
     benchmark = None
-    benchmark_data = None
-    save_folder = "C:/Users/Alex/Projects/SkillShare/"
+    base_folder = "/home/alex/Projects/Trading-Bot-Class1" # Change this to your path
     
     def __init__(self, tickers, benchmark="SPY"):
         self.benchmark = benchmark
@@ -17,57 +16,33 @@ class Backtester(TradingBot):
         super().__init__(tickers)
         
         # Make sure we don't trade the benchmark
-        self.trade_data.loc[:,("Signal", self.benchmark)] = -np.inf    
+        self.trade_data.loc[:,("Signal", self.benchmark)] = -1e6  
         
     def run_backtest(self, start_date, end_date):
         trade_data = self._filter_dates(self.trade_data, start_date, end_date)
         trades = self._run_backtest(trade_data)
         # Save
-        f_name = f"trades_{str(datetime.datetime.today())}.csv"
-        trades.to_csv(os.path.join(self.save_folder, f_name))
+        trades.loc[:, "Bench_TRI"] = trades["Close", self.benchmark]/trades["Close", self.benchmark].iloc[0]
+        f_name = f"backtest_{str(start_date)} to {str(end_date)}.csv"
+        trades.to_csv(os.path.join(self.base_folder, 'output', f_name))
         return trades
-    
-    def path_dependency_test(self, start_date, end_date):
-        
-        date_format = "%d-%b-%Y"
-        start = datetime.datetime.strptime(start_date, date_format)
-        end = datetime.datetime.strptime(end_date, date_format)
-        
-        dd = [start + datetime.timedelta(days=x) for x in range(0, (end-start).days, 120)]
-        mesh = np.array(np.meshgrid(dd, dd))
-        date_pairs = mesh.T.reshape(-1, 2)
-        min_period = datetime.timedelta(365*3)
-        data = []
-        for comb in date_pairs:            
-            if (comb[1] - comb[0]) >= min_period:
-                start_str = comb[0].strftime(date_format)
-                end_str = comb[1].strftime(date_format)
-                trade_data = self._filter_dates(self.trade_data, start_str, end_str)
-                data.append(trade_data)
-        
-        print(f'Running {len(data)} backtests')
-        pool = mp.Pool(mp.cpu_count()*2)
-        data = pool.map(self._run_backtest, data)        
-        
-        pool.close()
-        summary = None
-        for d in data:
-            summary = self._make_summary_report(d, summary)
-        # Save
-        f_name = f"summary_{str(datetime.datetime.today())}.csv"
-        pd.DataFrame(data=summary).to_csv(os.path.join(self.save_folder, f_name))
     
     def _get_query_range(self):
         start_date = "1990-01-01"
         end_date = str(datetime.date.today())
         return start_date, end_date
-    
+
+    @staticmethod
+    def _filter_dates(data, start_date, end_date):
+        data = data.loc[start_date:end_date]
+        return data
+
     def _run_backtest(self, trade_data):
         print(f'Running backtest for {trade_data.index[0]} to {trade_data.index[-1]}')
         
-        trade_data["Position"] = None
-        trade_data["Port_Return"] = 0.0
-        trade_data["Status"] = self.NO_CHANGE
+        trade_data.loc[:, "Position"] = None
+        trade_data.loc[:, "Port_Return"] = 0.0
+        trade_data.loc[:, "Status"] = self.NO_CHANGE
         
         prev_position = None
         for date, row in trade_data.iterrows():
@@ -102,6 +77,42 @@ class Backtester(TradingBot):
         trade_data.loc[:, "BM_Drawdown"] = trade_data["Close", self.benchmark].rolling(window=250).apply(self._calc_drawdown, raw=False)
         
         return trade_data
+
+    @staticmethod
+    def _calc_drawdown(array):
+        last = array[-1]
+        drawdown = last/np.max(array)-1
+        return drawdown
+
+    def path_dependency_test(self, start_date, end_date):
+        
+        date_format = "%d-%b-%Y"
+        start = datetime.datetime.strptime(start_date, date_format)
+        end = datetime.datetime.strptime(end_date, date_format)
+        
+        dd = [start + datetime.timedelta(days=x) for x in range(0, (end-start).days, 180)]
+        mesh = np.array(np.meshgrid(dd, dd))
+        date_pairs = mesh.T.reshape(-1, 2)
+        min_period = datetime.timedelta(365*3)
+        data = []
+        for comb in date_pairs:            
+            if (comb[1] - comb[0]) >= min_period:
+                start_str = comb[0].strftime(date_format)
+                end_str = comb[1].strftime(date_format)
+                trade_data = self._filter_dates(self.trade_data, start_str, end_str)
+                data.append(trade_data)
+        
+        print(f'Running {len(data)} backtests')
+        pool = mp.Pool(mp.cpu_count()*2)
+        data = pool.map(self._run_backtest, data)        
+        
+        pool.close()
+        summary = None
+        for d in data:
+            summary = self._make_summary_report(d, summary)
+        # Save
+        f_name = f"summary_{str(datetime.datetime.today())}.csv"
+        pd.DataFrame(data=summary).to_csv(os.path.join(self.base_folder, 'output' f_name))
     
     def _make_summary_report(self, trade_data, summary):                
         

@@ -8,4 +8,7 @@ from TradingBot import TradingBot
 if __name__ == "__main__":    
     
     bt = Backtester(["IWD", "IWF"])
-    trade_date = bt.path_dependency_test("01-Jan-2000", "01-Jan-2015")
+    bt.swap_positions = True
+    trade_date = bt.run_backtest("2010-05-10", "2013-10-18")
+
+# Note change to 180 days
