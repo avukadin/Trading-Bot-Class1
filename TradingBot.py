@@ -4,8 +4,6 @@ import datetime
 import pandas as pd
 import statsmodels.formula.api as smf
 
-debugTF = True
-
 class TradingBot():
     
     raw_data = None
