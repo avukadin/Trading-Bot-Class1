@@ -19,6 +19,7 @@ class Backtester(TradingBot):
         self.trade_data.loc[:,("Signal", self.benchmark)] = -1e6  
         
     def run_backtest(self, start_date, end_date):
+        # Entry method for running a single backtest
         trade_data = self._filter_dates(self.trade_data, start_date, end_date)
         trades = self._run_backtest(trade_data)
         # Save
@@ -26,8 +27,39 @@ class Backtester(TradingBot):
         f_name = f"backtest_{str(start_date)} to {str(end_date)}.csv"
         trades.to_csv(os.path.join(self.base_folder, 'output', f_name))
         return trades
+
+    def path_dependency_test(self, start_date, end_date):
+        # Entry method for running multiple backtests
+        date_format = "%d-%b-%Y"
+        start = datetime.datetime.strptime(start_date, date_format)
+        end = datetime.datetime.strptime(end_date, date_format)
+        
+        dd = [start + datetime.timedelta(days=x) for x in range(0, (end-start).days, 180)]
+        mesh = np.array(np.meshgrid(dd, dd))
+        date_pairs = mesh.T.reshape(-1, 2)
+        min_period = datetime.timedelta(365*3)
+        data = []
+        for comb in date_pairs:            
+            if (comb[1] - comb[0]) >= min_period:
+                start_str = comb[0].strftime(date_format)
+                end_str = comb[1].strftime(date_format)
+                trade_data = self._filter_dates(self.trade_data, start_str, end_str)
+                data.append(trade_data)
+        
+        print(f'Running {len(data)} backtests')
+        pool = mp.Pool(mp.cpu_count()*2)
+        data = pool.map(self._run_backtest, data)        
+        
+        pool.close()
+        summary = None
+        for d in data:
+            summary = self._make_summary_report(d, summary)
+        # Save
+        f_name = f"summary_{str(datetime.datetime.today())}.csv"
+        pd.DataFrame(data=summary).to_csv(os.path.join(self.base_folder, 'output', f_name))
     
     def _get_query_range(self):
+        # Methond to set dates for the data to be grabbed
         start_date = "1990-01-01"
         end_date = str(datetime.date.today())
         return start_date, end_date
@@ -38,6 +70,7 @@ class Backtester(TradingBot):
         return data
 
     def _run_backtest(self, trade_data):
+        # Main method for running a single backtest
         print(f'Running backtest for {trade_data.index[0]} to {trade_data.index[-1]}')
         
         trade_data.loc[:, "Position"] = None
@@ -77,45 +110,9 @@ class Backtester(TradingBot):
         trade_data.loc[:, "BM_Drawdown"] = trade_data["Close", self.benchmark].rolling(window=250).apply(self._calc_drawdown, raw=False)
         
         return trade_data
-
-    @staticmethod
-    def _calc_drawdown(array):
-        last = array[-1]
-        drawdown = last/np.max(array)-1
-        return drawdown
-
-    def path_dependency_test(self, start_date, end_date):
-        
-        date_format = "%d-%b-%Y"
-        start = datetime.datetime.strptime(start_date, date_format)
-        end = datetime.datetime.strptime(end_date, date_format)
-        
-        dd = [start + datetime.timedelta(days=x) for x in range(0, (end-start).days, 180)]
-        mesh = np.array(np.meshgrid(dd, dd))
-        date_pairs = mesh.T.reshape(-1, 2)
-        min_period = datetime.timedelta(365*3)
-        data = []
-        for comb in date_pairs:            
-            if (comb[1] - comb[0]) >= min_period:
-                start_str = comb[0].strftime(date_format)
-                end_str = comb[1].strftime(date_format)
-                trade_data = self._filter_dates(self.trade_data, start_str, end_str)
-                data.append(trade_data)
-        
-        print(f'Running {len(data)} backtests')
-        pool = mp.Pool(mp.cpu_count()*2)
-        data = pool.map(self._run_backtest, data)        
-        
-        pool.close()
-        summary = None
-        for d in data:
-            summary = self._make_summary_report(d, summary)
-        # Save
-        f_name = f"summary_{str(datetime.datetime.today())}.csv"
-        pd.DataFrame(data=summary).to_csv(os.path.join(self.base_folder, 'output', f_name))
     
     def _make_summary_report(self, trade_data, summary):                
-        
+        # Creates a summary report for the Path Dependancy Test
         if summary is None:
             summary = {"Start_Date": [],
                        "End_Date" : [],
